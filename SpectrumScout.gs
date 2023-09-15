@@ -143,9 +143,81 @@ function TBAEventOPRs(event) {
   if (!event) {throw new Error("Undefined input")}
   return JSON.parse(TBAQuery('event/'+event+'/oprs'))
 }
+function TBAEventMatchSimple(event){
+  if (!event) {throw new Error("Undefined input")}
+  return JSON.parse(TBAQuery('event/'+event+'/matches/simple'))
+}
 // End Query Scripts
 
 //Begin Specific Scripts
+/**
+ * Returns the Schedule of an event in range of cells. 
+ * The First Column is the Match Number, The next 3 columns are the Red Alliance, the next 3 are the Blue Alliance.
+ * The Headers are: Match Number, Red 1, Red 2, Red 3, Blue 1, Blue 2, Blue 3.
+ * 
+ * @param {text} event An event key
+ * @retrun A 2D array of the schedule.
+ */
+function TBASchedule(event) {
+  
+  let matchesData = TBAEventMatchSimple(event);
+  const transformedData = [];
+
+// Iterate through the matchesData and extract the desired information
+matchesData.forEach(match => {
+  const matchInfo = [];
+  //if the match is a qm match, add the match number if it is not, include sf/fm and the match number
+  match.key.includes("qm") ? matchInfo.push(match.match_number) : matchInfo.push(match.key.replace(match.event_key+"_", "").toUpperCase());
+
+  matchInfo.push(match.key); // Add the match key
+
+  // Add the team keys from both alliances 
+  matchInfo.push(...match.alliances.blue.team_keys);
+  matchInfo.push(...match.alliances.red.team_keys);
+
+  //remove frc from team keys
+  for (var i = 1; i < matchInfo.length; i++) {
+    matchInfo[i] = matchInfo[i].substring(3);
+  }
+
+  // Push the matchInfo array to the transformedData
+  transformedData.push(matchInfo);
+
+  // Sort the transformedData by match number using ordermatches()
+  transformedData.sort((a, b) => ordermatches(a[0], b[0]));
+
+  
+  
+});
+//console.log(transformedData) 
+  return transformedData;
+}
+
+function ordermatches(a, b) {
+  const matchTypeA = a.match(/(qm|qf|sf|f)(\d+)/);
+  const matchTypeB = b.match(/(qm|qf|sf|f)(\d+)/);
+
+  const typeOrder = { qm: 1, sf: 2, f: 3 };
+
+  if (matchTypeA && matchTypeB) {
+    const typeA = matchTypeA[1];
+    const typeB = matchTypeB[1];
+    const numberA = parseInt(matchTypeA[2]);
+    const numberB = parseInt(matchTypeB[2]);
+
+    if (typeOrder[typeA] !== typeOrder[typeB]) {
+      return typeOrder[typeA] - typeOrder[typeB];
+    }
+
+    return numberA - numberB;
+  }
+
+  return 0; // If the format doesn't match, maintain the original order
+}
+
+
+
+
 /**
  * Returns a list of events for a year.
  * 

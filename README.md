@@ -1,0 +1,2 @@
+# SpectrumScout
+ Scouting Scripts

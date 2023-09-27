@@ -1,772 +1,408 @@
-// Begin Base Scripts
-/**
- * Checks if a value is hexadecimal.
- *
- * @param {text} c The value to test.
- * @return TRUE/FALSE.
- * @customfunction
- */
-function isHex(c) {
-  try {
-    if (/[0-9a-f]+/.exec(c.toLowerCase())[0].length === c.length) {
-      return true 
-    } return false
+//=======================================================================================//
+// The Blue Alliance - https://www.thebluealliance.com/apidocs/v3
+//=======================================================================================//
+const TBA_key = 'TBA API KEY HERE';
+
+function TBA(path, headers){
+  var url = 'https://www.thebluealliance.com/api/v3/'+path
+  var authKey = "?X-TBA-Auth-Key=" + TBA_key;
+
+  options = "noHeaders";
+  if (headers == true){
+    options = "";
   }
-  catch (err) {
-    return false
+  return ImportJSON(url + authKey,"",options);
+}
+
+//=======================================================================================//
+// STABOTICS - https://www.statbotics.io/api/rest
+//=======================================================================================//
+
+function Statbotics(path, headers){
+  var url = 'https://api.statbotics.io/v2/'+path+"&offseason=True"
+
+  options = "noHeaders";
+  if (headers == true){
+    options = "";
   }
+  return ImportJSON(url,"",options);
 }
-/**
- * Converts epoch (unix) time is seconds to GMT-style date object.
- *
- * @param {number} epoch The epoch time in seconds to convert.
- * @return GAS Date object or Sheets time/date object.
- * @customfunction
- */
-function epochToGMTTime(epoch) {
-  return new Date(epoch * 1000).toTimeString()
+
+function getEPA(teamNumber, headers) {
+  return Statbotics("team_year/" + teamNumber + "/2023","/epa_end",headers);
 }
-/**
- * Sets the TBA Read Authentication Key for the project. Needs to be obtained from https://www.thebluealliance.com/account. Tied to the spreadsheet. Required for all other TBA calls.
- *
- * @param {text} key The TBA key.
- * @return Success/failure statement.
- * @customfunction
- */
-function TBASetKey(key) {
-  try {
-    var docProps = PropertiesService.getDocumentProperties()
-    var key = docProps.setProperty('TBA Auth key', key)
-  } catch (err) {
-    throw new Error('Key creation failed')
-  }
-  return 'Key creation successful!'
+
+function getAutoEPA(teamNumber, headers) {
+  return Statbotics("team_year/" + teamNumber + "/2023","/auto_epa_end",headers);
 }
+
+function getTeleopEPA(teamNumber, headers) {
+  return Statbotics("team_year/" + teamNumber + "/2023","/teleop_epa_end",headers);
+}
+
+function getEndgameEPA(teamNumber) {
+  return Statbotics("team_year/" + teamNumber + "/2023","/endgame_epa_end",headers);
+}
+
+function getRP1epa(teamNumber) {
+  return Statbotics("team_year/" + teamNumber + "/2023","/rp_1_epa_end",headers);
+}
+
+function getRP2epa(teamNumber) {
+  return Statbotics("team_year/" + teamNumber + "/2023","/rp_2_epa_end",headers);
+}
+
+/*====================================================================================================================================*
+  ImportJSON by Trevor Lohrbeer (@FastFedora)
+  ====================================================================================================================================
+  Version:      1.1
+  Project Page: http://blog.fastfedora.com/projects/import-json
+  Copyright:    (c) 2012 by Trevor Lohrbeer
+  License:      GNU General Public License, version 3 (GPL-3.0) 
+                http://www.opensource.org/licenses/gpl-3.0.html
+  ------------------------------------------------------------------------------------------------------------------------------------
+  A library for importing JSON feeds into Google spreadsheets. Functions include:
+     ImportJSON            For use by end users to import a JSON feed from a URL 
+     ImportJSONAdvanced    For use by script developers to easily extend the functionality of this library
+  Future enhancements may include:
+   - Support for a real XPath like syntax similar to ImportXML for the query parameter
+   - Support for OAuth authenticated APIs
+  Or feel free to write these and add on to the library yourself!
+  ------------------------------------------------------------------------------------------------------------------------------------
+  Changelog:
+  
+  1.1    Added support for the noHeaders option
+  1.0    Initial release
+ *====================================================================================================================================*/
 /**
- * Retrieves the TBA Read Authentication Key for the spreadsheet as set in TBASetKey().
+ * Imports a JSON feed and returns the results to be inserted into a Google Spreadsheet. The JSON feed is flattened to create 
+ * a two-dimensional array. The first row contains the headers, with each column header indicating the path to that data in 
+ * the JSON feed. The remaining rows contain the data. 
  * 
- * @return The TBA key set in TBASetKey()
- * @customfunction
- */
-function TBAKey() {
-  try {
-    var docProps = PropertiesService.getDocumentProperties()
-    var key = docProps.getProperty('TBA Auth key')
-    if (key) {return key} else {throw new Error('Key retrieval failed')}
-  } catch (err) {
-    throw new Error('Key retrieval failed')
-  }
-  throw new Error('This isn\'t right.')
-}
-/**
- * Decodes a string containing \uxxxx, \\, and \” escapes
+ * By default, data gets transformed so it looks more like a normal data import. Specifically:
+ *
+ *   - Data from parent JSON elements gets inherited to their child elements, so rows representing child elements contain the values 
+ *      of the rows representing their parent elements.
+ *   - Values longer than 256 characters get truncated.
+ *   - Headers have slashes converted to spaces, common prefixes removed and the resulting text converted to title case. 
+ *
+ * To change this behavior, pass in one of these values in the options parameter:
+ *
+ *    noInherit:     Don't inherit values from parent elements
+ *    noTruncate:    Don't truncate values
+ *    rawHeaders:    Don't prettify headers
+ *    noHeaders:     Don't include headers, only the data
+ *    debugLocation: Prepend each value with the row & column it belongs in
+ *
+ * For example:
+ *
+ *   =ImportJSON("http://gdata.youtube.com/feeds/api/standardfeeds/most_popular?v=2&alt=json", "/feed/entry/title,/feed/entry/content",
+ *               "noInherit,noTruncate,rawHeaders")
  * 
- * @param {text} input The input text.
- * @return The decoded string.
+ * @param {url} the URL to a public JSON feed
+ * @param {query} a comma-separated lists of paths to import. Any path starting with one of these paths gets imported.
+ * @param {options} a comma-separated list of options that alter processing of the data
+ *
+ * @return a two-dimensional array containing the data, with the first row containing headers
  * @customfunction
+ **/
+function ImportJSON(url, query, options) {
+  return ImportJSONAdvanced(url, query, options, includeXPath_, defaultTransform_);
+}
+
+/**
+ * An advanced version of ImportJSON designed to be easily extended by a script. This version cannot be called from within a 
+ * spreadsheet.
+ *
+ * Imports a JSON feed and returns the results to be inserted into a Google Spreadsheet. The JSON feed is flattened to create 
+ * a two-dimensional array. The first row contains the headers, with each column header indicating the path to that data in 
+ * the JSON feed. The remaining rows contain the data. 
+ *
+ * Use the include and transformation functions to determine what to include in the import and how to transform the data after it is
+ * imported. 
+ *
+ * For example:
+ *
+ *   =ImportJSON("http://gdata.youtube.com/feeds/api/standardfeeds/most_popular?v=2&alt=json", 
+ *               "/feed/entry",
+ *                function (query, path) { return path.indexOf(query) == 0; },
+ *                function (data, row, column) { data[row][column] = data[row][column].toString().substr(0, 100); } )
+ *
+ * In this example, the import function checks to see if the path to the data being imported starts with the query. The transform 
+ * function takes the data and truncates it. For more robust versions of these functions, see the internal code of this library.
+ *
+ * @param {url}           the URL to a public JSON feed
+ * @param {query}         the query passed to the include function
+ * @param {options}       a comma-separated list of options that may alter processing of the data
+ * @param {includeFunc}   a function with the signature func(query, path, options) that returns true if the data element at the given path
+ *                        should be included or false otherwise. 
+ * @param {transformFunc} a function with the signature func(data, row, column, options) where data is a 2-dimensional array of the data 
+ *                        and row & column are the current row and column being processed. Any return value is ignored. Note that row 0 
+ *                        contains the headers for the data, so test for row==0 to process headers only.
+ *
+ * @return a two-dimensional array containing the data, with the first row containing headers
+ **/
+function ImportJSONAdvanced(url, query, options, includeFunc, transformFunc) {
+  var jsondata = UrlFetchApp.fetch(url);
+  var object   = JSON.parse(jsondata.getContentText());
+  
+  return parseJSONObject_(object, query, options, includeFunc, transformFunc);
+}
+
+/** 
+ * Encodes the given value to use within a URL.
+ *
+ * @param {value} the value to be encoded
+ * 
+ * @return the value encoded using URL percent-encoding
  */
-function uniDecode(input) {
-  var output = ""
-  for (var i = 0; i < input.length; i++) {
-    if (isHex(input.slice(i-3, i)) && input.charAt(i-4) === 'u' && input.charAt(i-5) === '\\') {
-      output = output.slice(0, output.length-5)
-      output += String.fromCharCode(parseInt(input.charAt(i-3)+input.charAt(i-2)+input.charAt(i-1)+input.charAt(i),16))
-    } else {
-    if (input.charAt(i-1) === '\\' && (input.charAt(i) === '\\' | input.charAt(i) === "\"")) {
-      output = output.slice(0, output.length-1)
-      output += input.charAt(i)
-    } else {
-    output += input.charAt(i)
+function URLEncode(value) {
+  return encodeURIComponent(value.toString());  
+}
+
+/** 
+ * Parses a JSON object and returns a two-dimensional array containing the data of that object.
+ */
+function parseJSONObject_(object, query, options, includeFunc, transformFunc) {
+  var headers = new Array();
+  var data    = new Array();
+  
+  if (query && !Array.isArray(query) && query.toString().indexOf(",") != -1) {
+    query = query.toString().split(",");
+  }
+  
+  if (options) {
+    options = options.toString().split(",");
+  }
+    
+  parseData_(headers, data, "", 1, object, query, options, includeFunc);
+  parseHeaders_(headers, data);
+  transformData_(data, options, transformFunc);
+  
+  return hasOption_(options, "noHeaders") ? (data.length > 1 ? data.slice(1) : new Array()) : data;
+}
+
+/** 
+ * Parses the data contained within the given value and inserts it into the data two-dimensional array starting at the rowIndex. 
+ * If the data is to be inserted into a new column, a new header is added to the headers array. The value can be an object, 
+ * array or scalar value.
+ *
+ * If the value is an object, it's properties are iterated through and passed back into this function with the name of each 
+ * property extending the path. For instance, if the object contains the property "entry" and the path passed in was "/feed",
+ * this function is called with the value of the entry property and the path "/feed/entry".
+ *
+ * If the value is an array containing other arrays or objects, each element in the array is passed into this function with 
+ * the rowIndex incremeneted for each element.
+ *
+ * If the value is an array containing only scalar values, those values are joined together and inserted into the data array as 
+ * a single value.
+ *
+ * If the value is a scalar, the value is inserted directly into the data array.
+ */
+function parseData_(headers, data, path, rowIndex, value, query, options, includeFunc) {
+  var dataInserted = false;
+  
+  if (isObject_(value)) {
+    for (key in value) {
+      if (parseData_(headers, data, path + "/" + key, rowIndex, value[key], query, options, includeFunc)) {
+        dataInserted = true; 
       }
     }
-  }
-  Logger.log(output)
-  return output
-}
-/**
- * Handles the HTTPS request for TBA requests. Takes the path, such as team/frc1234/simple, and returns the resulting JSON object. Uses the key set in TBASetKey().
- * 
- * @param {text} path The part of the URL after "/api/v3/" in the query.
- * @return The body result of the query.
- * @customfunction
- */
-function TBAQuery(path) {
-  var url = 'https://www.thebluealliance.com/api/v3/'+path
-  var headers = {
-    'X-TBA-Auth-Key' : TBAKey()
-  }
-  var params = {
-    'headers' : headers
-  }
-  var result = UrlFetchApp.fetch(url, params)
-  return result.getContentText()
-}
-// End Base Scripts
-
-// Begin Query Scripts
-function TBATeamSimple(team) {
-  if (!team) {throw new Error("Undefined input")}
-  return JSON.parse(TBAQuery('team/frc'+team+'/simple'))
-}
-function TBATeam(team) {
-  if (!team) {throw new Error("Undefined input")}
-  return JSON.parse(TBAQuery('team/frc'+team))
-}
-function TBAStatus() {
-  return JSON.parse(TBAQuery('status'))
-}
-function TBAMatch(match) {
-  if (!match) {throw new Error("Undefined input")}
-  return JSON.parse(TBAQuery('match/'+match))
-}
-function TBATeamEventStatus(team, event) {
-  if (!event && !team) {throw new Error("Undefined input")}
-  return JSON.parse(TBAQuery('team/frc'+team+'/event/'+event+'/status'))
-}
-function TBATeamEventMatches(team, event) {
-  if (!event && !team) {throw new Error("Undefined input")}
-  return JSON.parse(TBAQuery('team/frc'+team+'/event/'+event+'/matches'))
-}
-function TBATeamEventMatchKeys(team, event) {
-  if (!event && !team) {throw new Error("Undefined input")}
-  return JSON.parse(TBAQuery('team/frc'+team+'/event/'+event+'/matches/keys'))
-}
-function TBATeamSocial(team) {
-  if (!team) {throw new Error("Undefined input")}
-  return JSON.parse(TBAQuery('team/frc'+team+'/social_media'))
-}
-function TBAEventMatchKeys(event) {
-  if (!event) {throw new Error("Undefined input")}
-  return JSON.parse(TBAQuery('event/'+event+'/matches/keys'))
-}
-function TBAEventOPRs(event) {
-  if (!event) {throw new Error("Undefined input")}
-  return JSON.parse(TBAQuery('event/'+event+'/oprs'))
-}
-// End Query Scripts
-
-//Begin Specific Scripts
-/**
- * Returns a list of events for a year.
- * 
- * @param {number} year A year
- * @return A list of all event keys for that year.
- * @customfunction
- */
-function TBAYearEvents(year) {
-  try {
-    return JSON.parse(TBAQuery("events/"+year+"/keys"))
-  } catch (err) {return ("There was an error retrieving the data.")}
-}
-/**
- * Returns the team name/nickname for the team number.
- * 
- * @param {number} team A team number.
- * @return The team nickname.
- * @customfunction
- */
-function TBATeamName(team) {
-  try {
-  return uniDecode(TBATeamSimple(team)['nickname'])
-  } catch (err) {return ("There was an error retrieving the data.")}
-}
-/**
- * Returns the team full name/name for the team number.
- * 
- * @param {number} team A team number.
- * @return The team's full name
- * @customfunction
- */
-function TBATeamNameFull(team) {
-  try {
-  return uniDecode(TBATeamSimple(team)['name'])
-  } catch (err) {return ("There was an error retrieving the data.")}
-}
-/**
- * Returns the city the team number is located in.
- * 
- * @param {number} team A team number
- * @return The team's city
- * @customfunction
- */
-function TBATeamCity(team) {
-  try {
-  return uniDecode(TBATeamSimple(team)['city'])
-  } catch (err) {return ("There was an error retrieving the data.")}
-}
-/**
- * The state or province the team is located in.
- * 
- * @param {number} team A team number
- * @return The team's state/province
- * @customfunction
- */
-function TBATeamState(team) {
-  try {
-  return uniDecode(TBATeamSimple(team)['state_prov'])
-  } catch (err) {return ("There was an error retrieving the data.")}
-}
-/**
- * Returns the country the team number is located in.
- * 
- * @param {number} team A team number
- * @return  The team's country
- * @customfunction
- */
-function TBATeamCountry(team) {
-  try {
-  return uniDecode(TBATeamSimple(team)['country'])
-  } catch (err) {return ("There was an error retrieving the data.")}
-}
-/**
- * Returns the website of the team number.
- * 
- * @param {number} team A team number
- * @return 
- * @customfunction
- */
-function TBATeamSite(team) {
-  try {
-  var s = TBATeam(team)['website']
-  if (s) {return uniDecode(s)} else {return "No website found."}
-  } catch (err) {return ("There was an error retrieving the data.")}
-}
-/**
- * Returns the rookie year of the team
- * 
- * @param {number} team A team number
- * @return The rookie year
- * @customfunction
- */
-function TBATeamRookie(team) {
-  try {
-  return JSON.parse(JSON.stringify(TBATeam(team)))['rookie_year']
-  } catch (err) {return ("There was an error retrieving the data.")}
-}
-/**
- * Returns the team number’s championship location.
- * 
- * @param {number} team A team number
- * @return The championship location
- * @customfunction
- */
-function TBATeamChampionship(team) {
-  try {
-  return uniDecode(TBATeam(team)['home_championship']['2018'])
-  } catch (err) {return ("There was an error retrieving the data.")}
-}
-/**
- * Returns the team number’s pre-2018 championship.
- * 
- * @param {number} team A team number
- * @return The old championship location.
- * @customfunction
- */
-function TBATeamChampionshipOld(team) {
-  try {
-  return uniDecode(TBATeam(team)['home_championship']['2017'])
-  } catch (err) {return ("There was an error retrieving the data.")}
-}
-/**
- * Returns the latest FRC season
- * 
- * @return A year, the latest FRC season.
- * @customfunction
- */
-function TBAMaxSeason() {
-  try {
-  return JSON.parse(JSON.stringify(TBAStatus()))['max_season']
-  } catch (err) {return ("There was an error retrieving the data.")}
-}
-/**
- * Returns a team’s ranking in qualifications at a given event.
- * 
- * @param {number} team A team number
- * @param {text} event An event key
- * @return A number representing the team's qualification ranking at the event.
- * @customfunction
- */
-function TBATeamEventQualRank(team, event) {
-  try {
-    return TBATeamEventStatus(team, event)['qual']['ranking']['rank']
-  }
-  catch (err) {
-    throw new Error('Team was not at competition or there were no qual rankings.'+err)
-  }
-}
-/**
- * Returns the keys for each event the team attended in that year.
- * 
- * @param {number} team A team number
- * @param {number} year A year
- * @param {boolean} opt_official Optionally fetch only official events
- * @return An 1-by-x array of event keys
- * @customfunction
- */
-function TBATeamYearEvents(team, year, opt_official) {
-  try {
-    var eventKeys = JSON.parse(TBAQuery('team/frc'+team+'/events/'+year+'/keys'))
-    if (opt_official) {
-      var eventData = JSON.parse(TBAQuery('team/frc'+team+'/events/'+year))
-      eventData.forEach(function(event) {
-          if (event['event_type'] === 99){
-            eventKeys.splice(eventKeys.indexOf(event['key']), 1)
-          }
-      })
+  } else if (Array.isArray(value) && isObjectArray_(value)) {
+    for (var i = 0; i < value.length; i++) {
+      if (parseData_(headers, data, path, rowIndex, value[i], query, options, includeFunc)) {
+        dataInserted = true;
+        rowIndex++;
+      }
     }
+  } else if (!includeFunc || includeFunc(query, path, options)) {
+    // Handle arrays containing only scalar values
+    if (Array.isArray(value)) {
+      value = value.join(); 
+    }
+    
+    // Insert new row if one doesn't already exist
+    if (!data[rowIndex]) {
+      data[rowIndex] = new Array();
+    }
+    
+    // Add a new header if one doesn't exist
+    if (!headers[path] && headers[path] != 0) {
+      headers[path] = Object.keys(headers).length;
+    }
+    
+    // Insert the data
+    data[rowIndex][headers[path]] = value;
+    dataInserted = true;
+  }
   
-    return eventKeys
-  } catch (err) { return ("There was an error retrieving the data.") }
+  return dataInserted;
 }
-/**
- * Returns the color of the winning alliance for the match.
- * 
- * @param {text} match A match key
- * @return "red" or "blue"
- * @customfunction
- */
-function TBAMatchWinner(match) {
-  try {
-  return TBAMatch(match)['winning_alliance']
-  } catch (err) {return ("There was an error retrieving the data.")}
-}
-/**
- * Lists each winner in a given match.
- * 
- * @param {text} match A match key
- * @return An 1-by-x array of team numbers
- * @customfunction
- */
-function TBAMatchWinners(match) {
-  try {
-  var m = TBAMatch(match)
-  var a = m['winning_alliance']
-  var x = m['alliances'][a]['team_keys']
-  for (var i = 0; i < x.length; i++) {
-    x[i] = x[i].substring(3)
-  }
-  return x
-  } catch (err) {return ("There was an error retrieving the data.")}
-}
-/**
- * Returns if a team won the match or not.
- * 
- * @param {number} team A team number
- * @param {text} match A match key
- * @return A boolean (true/false)
- * @customfunction
- */
-function TBATeamMatchWin(team, match) {
-  try {
-  var x = TBAMatchWinners(match)
-  for (i in x) {
-    if (x[i].toString() === team.toString()) {return true}
-  }
-  return false
-  } catch (err) {return ("There was an error retrieving the data.")}
-}
-/**
- * Returns if a team won their xth match (sorted by keys in alphabetical order, not order of competition) at an event.
- * 
- * @param {number} team A team number
- * @param {text} event An event key
- * @param {number} matchnum The number of the key in alpha order for a team's matches at an event.
- * @return A boolean (true/false)
- * @customfunction
- */
-function TBATeamEventMatchnumWin(team,event,matchnum) {
-  try {
-  var x = JSON.stringify(TBATeamEventMatchKeys(team, event)[matchnum-1])
-  x = x.substring(1,x.length-1)
-  var y = TBAMatchWinners(x)
-  var t = ""
-  for (var i in y) {
-    if (y[i].toString() === team.toString()) {return true}
-  }
-  return false
-  } catch (err) {return ("There was an error retrieving the data.")}
-}
-/**
- * Returns the color of a team in a certain match.
- * 
- * @param {text} match A match key
- * @param {number} team A team number
- * @return A color (red/blue)
- * @customfunction
- */
-function TBAMatchTeamColor(match, team) {
-  try {
-  var m = TBAMatch(match)
-  var r = m["alliances"]["red"]["team_keys"]
-  var b = m["alliances"]["blue"]["team_keys"]
-  for (var ri in r) {
-    if (r[ri].toString() === ("frc"+team.toString())) {return "red"}
-  }
-  for (var bi in b) {
-    if (b[bi].toString() === ("frc"+team.toString())) {return "blue"}
-  }
-  throw new Error('Team was not at the match')
-  } catch (err) {return ("There was an error retrieving the data.")}
-}
-/**
- * Returns the teams of an alliance at a match given their color.
- * 
- * @param {text} match A match key
- * @param {text} color A color (red/blue)
- * @return A list of the three teams of the chosen alliance at the match.
- * @customfunction
- */
-function TBAMatchAllianceTeams(match, color) {
-  try {
-    return TBAMatch(match)['alliances'][color]['team_keys']
-  } catch (err) {return ("There was an error retrieving the data.")}
-}
-/**
- * Returns the score of an alliance at a match given their color.
- * 
- * @param {text} match A match key
- * @param {text} color A color (red/blue)
- * @return A number representing the score
- * @customfunction
- */
-function TBAMatchAllianceScore(match, color) {
-  try {
-  var m = TBAMatch(match)
-  switch (match.substr(0,4)) {
-    case '2015':
-      return JSON.stringify(m['score_breakdown'][color]['total_points'])
-      break;
-    case '2016':
-      return JSON.stringify(m['score_breakdown'][color]['totalPoints'])
-      break;
-    case '2017':
-      return JSON.stringify(m['score_breakdown'][color]['totalPoints'])
-      break;
-    case '2018':
-      return JSON.stringify(m['score_breakdown'][color]['totalPoints'])
-      break;
-    case '2019':
-      return JSON.stringify(m['score_breakdown'][color]['totalPoints'])
-      break;
-    case '2020':
-      return JSON.stringify(m['score_breakdown'][color]['totalPoints'])
-      break;
-    case '2021':
-      return JSON.stringify(m['score_breakdown'][color]['totalPoints'])
-      break;
-    case '2022':
-      return JSON.stringify(m['score_breakdown'][color]['totalPoints'])
-      break;
-    case '2023':
-      return JSON.stringify(m['score_breakdown'][color]['totalPoints'])
-      break;
-    default:
-      throw new Error('Score not supported for this year')
-  }
-  } catch (err) {return ("There was an error retrieving the data.")}
-}
-/**
- * Returns the ranking points an alliance earned at a match given their color.
- * 
- * @param {text} match A match key
- * @param {text} color A color (red/blue)
- * @return The number of ranking points earned by the alliance
- * @customfunction
- */
-function TBAMatchAllianceRP(match, color) {
-  try {
-  var m = TBAMatch(match)
-  switch (match.substr(0,4)) {
-    case '2016':
-      return JSON.stringify(m['score_breakdown'][color]['tba_rpEarned'])
-      break;
-    case '2017':
-      return JSON.stringify(m['score_breakdown'][color]['tba_rpEarned'])
-      break;
-    case '2018':
-      return JSON.stringify(m['score_breakdown'][color]['rp'])
-      break;
-    case '2019':
-      return JSON.stringify(m['score_breakdown'][color]['rp'])
-      break;
-    default:
-      throw new Error('RP not supported for this year')
-  }
-  } catch (err) {return ("There was an error retrieving the data.")}
-}
-/**
- * Returns the time of a match in unix epoch time.
- * 
- * @param {text} match A match key
- * @return A unix epoch time in seconds
- * @customfunction
- */
-function TBAMatchTime(match) {
-  try {
-  return JSON.stringify(TBAMatch(match)['post_result_time'])
-  } catch (err) {return ("There was an error retrieving the data.")}
-}
-/**
- * Returns the Twitter handle of the team, if available.
- * 
- * @param {number} team A taem number
- * @return A twitter handle
- * @customfunction
- */
-function TBATeamTwitter(team) {
-  try {
-  var json = TBATeamSocial(team)
-  var i = 0;
-  for (var ix in json) {
-    if (json[i]['type'] === "twitter-profile") {
-      var t = JSON.stringify(json[i]['foreign_key'])
-      return t.slice(1, t.length-1)
-    }
-    i++
-  }
-  return "No Twitter Profile Found."
-  } catch (err) {return ("There was an error retrieving the data.")}
-}
-/**
- * Returns the Facebook username of the team, if available.
- * 
- * @param {number} team A team number
- * @return A Facebook username
- * @customfunction
- */
-function TBATeamFacebook(team) {
-  try {
-  var json = TBATeamSocial(team)
-  var i = 0;
-  for (var ix in json) {
-    if (json[i]['type'] === "facebook-profile") {
-      var t = JSON.stringify(json[i]['foreign_key'])
-      return t.slice(1, t.length-1)
-    }
-    i++
-  }
-  return "No Facebook Profile Found."
-  } catch (err) {return ("There was an error retrieving the data.")}
-}
-/**
- * Returns the Github username of the team, if available.
- * 
- * @param {number} team A team number
- * @return A Github username
- * @customfunction
- */
-function TBATeamGithub(team) {
-  try {
-  var json = TBATeamSocial(team)
-  var i = 0;
-  for (var ix in json) {
-    if (json[i]['type'] === "github-profile") {
-      var t = JSON.stringify(json[i]['foreign_key'])
-      return t.slice(1, t.length-1)
-    }
-    i++
-  }
-  return "No Github Profile Found."
-  } catch (err) {return ("There was an error retrieving the data.")}
-}
-/**
- * Returns the Instagram username of the team, if available.
- * 
- * @param {number} team A team number
- * @return An Instagram username
- * @customfunction
- */
-function TBATeamInstagram(team) {
-  try {
-  var json = TBATeamSocial(team)
-  var i = 0;
-  for (var ix in json) {
-    if (json[i]['type'] === "instagram-profile") {
-      var t = JSON.stringify(json[i]['foreign_key'])
-      return t.slice(1, t.length-1)
-    }
-    i++
-  }
-  return "No Instagram Profile Found."
-  } catch (err) {return ("There was an error retrieving the data.")}
-}
-/**
- * Returns the Youtube channel of the team, if available.
- * 
- * @param {number} team A team number
- * @return A Youtube channel
- * @customfunction
- */
-function TBATeamYoutube(team) {
-  try {
-  var json = TBATeamSocial(team)
-  var i = 0;
-  for (var ix in json) {
-    if (json[i]['type'] === "youtube-channel") {
-      var t = JSON.stringify(json[i]['foreign_key'])
-      return t.slice(1, t.length-1)
-    }
-    i++
-  }
-  return "No Youtube Channel Found."
-  } catch (err) {return ("There was an error retrieving the data.")}
-}
-/**
- * Returns the Periscope username of the team, if available.
- * 
- * @param {number} team A team number
- * @return A Periscope username
- * @customfunction
- */
-function TBATeamPeriscope(team) {
-  try {
-  var json = TBATeamSocial(team)
-  var i = 0;
-  for (var ix in json) {
-    if (json[i]['type'] === "periscope-profile") {
-      var t = JSON.stringify(json[i]['foreign_key'])
-      return t.slice(1, t.length-1)
-    }
-    i++
-  }
-  return "No Periscope Channel Found."
-  } catch (err) {return ("There was an error retrieving the data.")}
-}
-/**
- * Returns the OPR of a team at an event.
- * 
- * @param {number} team A team number
- * @param {text} event An event key
- * @return An OPR number
- * @customfunction
- */
-function TBATeamEventOPR(team, event) {
-  try {
-  return TBAEventOPRs(event)["oprs"]["frc"+team]
-  } catch (err) {return ("There was an error retrieving the data.")}
-}
-/**
- * Returns the DPR of a team at an event.
- * 
- * @param {number} team A team number
- * @param {text} event An event key
- * @return A DPR number
- * @customfunction
- */
-function TBATeamEventDPR(team, event) {
-  try {
-  return TBAEventOPRs(event)["dprs"]["frc"+team]
-  } catch (err) {return ("There was an error retrieving the data.")}
-}
-/**
- * Returns the CCWM of a team at an event.
- * 
- * @param {number} team A team number
- * @param {text} event An event key
- * @return A CCWM number
- * @customfunction
- */
-function TBATeamEventCCWM(team, event) {
-  try {
-  return TBAEventOPRs(event)["ccwms"]["frc"+team]
-  } catch (err) {return ("There was an error retrieving the data.")}
-}
-/**
- * Lists the teams at an event.
- * 
- * @param {text} event An event key
- * @return An 1-by-x array of team numbers
- * @customfunction
- */
-function TBAEventTeams(event) {
-  try {
-  var x = JSON.parse(TBAQuery("event/"+event+"/teams/keys"))
-  for (var i = 0; i < x.length; i++) {
-    x[i] = x[i].substring(3)
-  }
-  return x
-  } catch (err) {return ("There was an error retrieving the data.")}
-}
-/**
- * Returns the number of wins a team had in qualification matches at the given event.
- * 
- * @param {number} team A team number
- * @param {text} event An event key
- * @return A number of wins in qual matches.
- * @customfunction
- */
-function TBATeamEventQualWins(team, event) {
-  try {
-  return TBATeamEventStatus(team, event)['qual']['ranking']['record']['wins']
-  } catch (err) {return ("There was an error retrieving the data.")}
-}
-/**
- * Returns the number of losses a team had in qualification matches at the given event.
- * 
- * @param {number} team A team number
- * @param {text} event An event key
- * @return A number of losses in qual matches.
- * @customfunction
- */
-function TBATeamEventQualLosses(team, event) {
-  try {
-  return TBATeamEventStatus(team, event)['qual']['ranking']['record']['losses']
-  } catch (err) {return ("There was an error retrieving the data.")}
-}
-/**
- * Returns the number of ties a team had in qualification matches at the given event.
- * 
- * @param {number} team A team number
- * @param {text} event An event key
- * @return A number of ties in qual matches
- * @customfunction
- */
-function TBATeamEventQualTies(team, event) {
-  try {
-  return TBATeamEventStatus(team, event)['qual']['ranking']['record']['ties']
-  } catch (err) {return ("There was an error retrieving the data.")}
-}
-// End Specific Scripts
 
-// Begin Custom Scripts
-/**
- * Used for finding custom information about a match.
- * 
- * @param {text} match A match key
- * @param {text} nav The navigation path through the JSON. Can be of arbitrary length, each item is a sub-level.
- * @return Whatever the nav path leads to.
- * @customfunction
+/** 
+ * Parses the headers array and inserts it into the first row of the data array.
  */
-function TBAMatchCustom(match, nav) {
-  try {
-  var args = Array.prototype.slice.call(arguments, 1);
-  var json = TBAMatch(match)
-  var t = ""
-  for (var a in args) {
-    json = json[args[a]]
+function parseHeaders_(headers, data) {
+  data[0] = new Array();
+
+  for (key in headers) {
+    data[0][headers[key]] = key;
   }
-  return json
-  } catch (err) {return ("There was an error parsing the JSON.")}
 }
-/**
- * Much like TBAMatchCustom(), however, this can point to an arbitrary TBA API v3 destination.
- * 
- * @param {text} query The query path after "/api/v3/" in the JSON URL.
- * @param {text} nav The navigation path through the JSON. Can be of arbitrary length, each item is a sub-level.
- * @return Whatever the nav path leads to.
- * @customfunction
+
+/** 
+ * Applies the transform function for each element in the data array, going through each column of each row.
  */
-function TBACustom(query, nav) {
-  var json
-  try {
-  json = JSON.parse(TBAQuery(query))
-  } catch (err) {return ("There was an error retrieving the JSON.")}
-  try {
-  var args = Array.prototype.slice.call(arguments, 1);
-  for (var a in args) {
-    json = json[args[a]]
+function transformData_(data, options, transformFunc) {
+  for (var i = 0; i < data.length; i++) {
+    for (var j = 0; j < data[i].length; j++) {
+      transformFunc(data, i, j, options);
+    }
   }
-  return JSON.stringify(json)
-  } catch (err) {return ("There was an error parsing the JSON.")}
 }
-// End Custom Scripts
+
+/** 
+ * Returns true if the given test value is an object; false otherwise.
+ */
+function isObject_(test) {
+  return Object.prototype.toString.call(test) === '[object Object]';
+}
+
+/** 
+ * Returns true if the given test value is an array containing at least one object; false otherwise.
+ */
+function isObjectArray_(test) {
+  for (var i = 0; i < test.length; i++) {
+    if (isObject_(test[i])) {
+      return true; 
+    }
+  }  
+
+  return false;
+}
+
+/** 
+ * Returns true if the given query applies to the given path. 
+ */
+function includeXPath_(query, path, options) {
+  if (!query) {
+    return true; 
+  } else if (Array.isArray(query)) {
+    for (var i = 0; i < query.length; i++) {
+      if (applyXPathRule_(query[i], path, options)) {
+        return true; 
+      }
+    }  
+  } else {
+    return applyXPathRule_(query, path, options);
+  }
+  
+  return false; 
+};
+
+/** 
+ * Returns true if the rule applies to the given path. 
+ */
+function applyXPathRule_(rule, path, options) {
+  return path.indexOf(rule) == 0; 
+}
+
+/** 
+ * By default, this function transforms the value at the given row & column so it looks more like a normal data import. Specifically:
+ *
+ *   - Data from parent JSON elements gets inherited to their child elements, so rows representing child elements contain the values 
+ *     of the rows representing their parent elements.
+ *   - Values longer than 256 characters get truncated.
+ *   - Values in row 0 (headers) have slashes converted to spaces, common prefixes removed and the resulting text converted to title 
+*      case. 
+ *
+ * To change this behavior, pass in one of these values in the options parameter:
+ *
+ *    noInherit:     Don't inherit values from parent elements
+ *    noTruncate:    Don't truncate values
+ *    rawHeaders:    Don't prettify headers
+ *    debugLocation: Prepend each value with the row & column it belongs in
+ */
+function defaultTransform_(data, row, column, options) {
+  if (!data[row][column]) {
+    if (row < 2 || hasOption_(options, "noInherit")) {
+      data[row][column] = "";
+    } else {
+      data[row][column] = data[row-1][column];
+    }
+  } 
+
+  if (!hasOption_(options, "rawHeaders") && row == 0) {
+    if (column == 0 && data[row].length > 1) {
+      removeCommonPrefixes_(data, row);  
+    }
+    
+    data[row][column] = toTitleCase_(data[row][column].toString().replace(/[\/\_]/g, " "));
+  }
+  
+  if (!hasOption_(options, "noTruncate") && data[row][column]) {
+    data[row][column] = data[row][column].toString().substr(0, 256);
+  }
+
+  if (hasOption_(options, "debugLocation")) {
+    data[row][column] = "[" + row + "," + column + "]" + data[row][column];
+  }
+}
+
+/** 
+ * If all the values in the given row share the same prefix, remove that prefix.
+ */
+function removeCommonPrefixes_(data, row) {
+  var matchIndex = data[row][0].length;
+
+  for (var i = 1; i < data[row].length; i++) {
+    matchIndex = findEqualityEndpoint_(data[row][i-1], data[row][i], matchIndex);
+
+    if (matchIndex == 0) {
+      return;
+    }
+  }
+  
+  for (var i = 0; i < data[row].length; i++) {
+    data[row][i] = data[row][i].substring(matchIndex, data[row][i].length);
+  }
+}
+
+/** 
+ * Locates the index where the two strings values stop being equal, stopping automatically at the stopAt index.
+ */
+function findEqualityEndpoint_(string1, string2, stopAt) {
+  if (!string1 || !string2) {
+    return -1; 
+  }
+  
+  var maxEndpoint = Math.min(stopAt, string1.length, string2.length);
+  
+  for (var i = 0; i < maxEndpoint; i++) {
+    if (string1.charAt(i) != string2.charAt(i)) {
+      return i;
+    }
+  }
+  
+  return maxEndpoint;
+}
+  
+
+/** 
+ * Converts the text to title case.
+ */
+function toTitleCase_(text) {
+  if (text == null) {
+    return null;
+  }
+  
+  return text.replace(/\w\S*/g, function(word) { return word.charAt(0).toUpperCase() + word.substr(1).toLowerCase(); });
+}
+
+/** 
+ * Returns true if the given set of options contains the given option.
+ */
+function hasOption_(options, option) {
+  return options && options.indexOf(option) >= 0;
+}
+
